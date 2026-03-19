@@ -35,8 +35,8 @@ services:
   # ─── Mock Services ────────────────────────────────────────────────────────
   v1-mock-service:
     build:
-      context: ./v1-mock-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: v1-mock-service/Dockerfile
     container_name: v1-mock-service
     ports:
       - "8081:8081"
@@ -46,8 +46,8 @@ services:
 
   v2-mock-service:
     build:
-      context: ./v2-mock-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: v2-mock-service/Dockerfile
     container_name: v2-mock-service
     ports:
       - "8082:8082"
@@ -62,8 +62,8 @@ services:
   # ─── Main Platform ────────────────────────────────────────────────────────
   shadow-platform:
     build:
-      context: ./shadow-platform
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: shadow-platform/Dockerfile
     container_name: shadow-platform
     ports:
       - "8080:8080"

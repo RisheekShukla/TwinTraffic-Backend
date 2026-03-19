@@ -1,7 +1,7 @@
 FROM eclipse-temurin:21-jdk-alpine AS builder
 WORKDIR /app
-COPY pom.xml .
-COPY src ./src
+COPY shadow-platform/pom.xml .
+COPY shadow-platform/src ./src
 RUN apk add --no-cache maven && mvn clean package -DskipTests -q
 
 FROM eclipse-temurin:21-jre-alpine
