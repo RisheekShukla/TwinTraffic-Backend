@@ -1,228 +1,122 @@
-# TwinTraffic
+<div align="center">
+  <h1>🚦 TwinTraffic <i>(Gateway & Core Services)</i></h1>
+  <p><b>A Production-Grade Shadow Traffic Mirroring & Validation System</b></p>
 
-A **production-grade Shadow Traffic Mirroring System** built with Java Spring Boot, PostgreSQL, and Redis.
+  <p>
+    <img src="https://img.shields.io/badge/Java-21-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java" />
+    <img src="https://img.shields.io/badge/Spring_Boot-3.2-6DB33F?style=for-the-badge&logo=springboot&logoColor=white" />
+    <img src="https://img.shields.io/badge/PostgreSQL-15-336791?style=for-the-badge&logo=postgresql&logoColor=white" />
+    <img src="https://img.shields.io/badge/Redis-7-DC382D?style=for-the-badge&logo=redis&logoColor=white" />
+    <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" />
+  </p>
 
-## What It Does
-
-This platform acts as an API gateway/middleware that:
-1. **Accepts** incoming requests
-2. **Forwards** them synchronously to the primary service (v1) → returns v1 response to the client immediately
-3. **Mirrors** the same request asynchronously to the shadow service (v2) — completely non-blocking
-4. **Compares** responses (status code, JSON body, latency) between v1 and v2
-5. **Logs** all data and mismatches to PostgreSQL
-6. **Exposes** APIs for querying logs, metrics, and replaying requests
-
----
-
-## Architecture
-
-```
-Client
-  │
-  ▼
-POST /proxy  (shadow-platform :8080)
-  │
-  ├─── sync ──► v1-mock-service :8081  ──► response to client
-  │
-  └─── async (thread pool) ──► v2-mock-service :8082
-                                     │
-                                     ▼
-                             ComparisonEngine
-                                     │
-                                     ▼
-                              PostgreSQL DB
-                         (requests, responses, comparisons)
-                                     │
-                                     ▼
-                             Redis (metrics counters)
-```
-
-### Layers
-
-| Layer | Classes |
-|---|---|
-| **Controller** | `ProxyController`, `RequestLogController`, `ReplayController`, `MetricsController` |
-| **Service** | `ProxyService`, `ShadowService`, `ComparisonEngine`, `LoggingService`, `ReplayService`, `MetricsService`, `RequestLogService` |
-| **Repository** | `RequestRepository`, `ResponseRepository`, `ComparisonRepository` |
-| **Config** | `ShadowConfig`, `AsyncConfig`, `WebClientConfig`, `RedisConfig`, `OpenApiConfig` |
+  <p>
+    Validate your backend deployments safely using real traffic. Mirror production requests, detect deep JSON schema bugs, and compare latencies between microservices—entirely in the background, without ever impacting your users.
+  </p>
+</div>
 
 ---
 
-## Request Flow
+## ⚡ Everything You Need to Know
 
-```
-1. Client → POST /proxy  {endpoint, method, payload, headers}
-2. ProxyService.proxy()
-   ├── LoggingService.saveRequest()   → persists to `requests` table
-   ├── v1WebClient.call() [blocking]  → gets v1 response
-   ├── LoggingService.saveResponse("v1")
-   ├── ShadowConfig.shouldMirror()?   → checks enabled + sampling
-   │   └── ShadowService.mirrorAsync() [@Async, thread pool]
-   │       ├── v2WebClient.call() [timeout: 5s]
-   │       ├── LoggingService.saveResponse("v2")
-   │       └── ComparisonEngine.compare()
-   │           └── persist comparison (MATCH/MISMATCH/ERROR/TIMEOUT)
-   └── return ProxyResponseDTO (v1 response) to client
+This repository contains the backend infrastructure for the **TwinTraffic** platform. It acts as an intelligent API Gateway that automatically splits HTTP traffic, executing deep analytical matching on microservice responses.
+
+### 🌟 Key Features
+- **Zero-Impact Mirroring:** Incoming traffic is synchronously forwarded to `v1` while being asynchronously mirrored to `v2` via Spring `@Async` Thread Pools.
+- **Deep JSON Diffing:** A custom recursive `ComparisonEngine` scans Jackson response trees to detect schema, value, or array mismatches.
+- **Fail-Safe Integrity:** The shadow service (`v2`) can crash, timeout, or return 500s—the client will *never* know. The `v1` response is always guaranteed.
+- **Centralized Metrics:** Uses Redis atomic counters for high-speed rate-tracking and PostgreSQL for durable audit logs.
+- **Idempotency Headers:** All mirrored requests are stamped with `X-Shadow-Request: true` to prevent side-effect duplication in downstream payment/email services.
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+graph TD
+    Client[Client Request] --> Gateway(TwinTraffic Gateway :8080)
+    
+    Gateway -- "1. Sync Call" --> V1(Primary Service v1 :8081)
+    V1 -. "2. 200 OK" .-> Gateway
+    Gateway -- "3. Return instantly" --> Client
+    
+    Gateway -- "4. Async Mirror" --> V2(Shadow Service v2 :8082)
+    V2 -. "5. Chaos/Timeout" .-> DiffEngine
+    
+    V1 -. "6. Store Result" .-> DiffEngine{Deep JSON Comparison}
+    
+    DiffEngine -- MATCH / MISMATCH --> Postgres[(PostgreSQL)]
+    DiffEngine -- Error Rates --> Redis[(Redis Cache)]
 ```
 
 ---
 
-## Tech Stack
+## 📦 Service Topology (Docker Compose)
 
-| Component | Technology |
-|---|---|
-| Backend | Java 21 + Spring Boot 3.2 |
-| Database | PostgreSQL 15 (Flyway migrations) |
-| Cache / Metrics | Redis 7 |
-| HTTP Client | Spring WebClient (WebFlux) |
-| Async | `@Async` + `ThreadPoolTaskExecutor` (10 core / 50 max) |
-| Docs | SpringDoc OpenAPI 3 (Swagger UI) |
-| Containerization | Docker + Docker Compose |
+The entire mesh is orchestrated via a single multi-container `docker-compose.yml`.
+
+1. **`shadow-platform`** (Port `8080`): The brain. Routes traffic, manages the `@Async` execution pool, diffs JSON, and exposes analytical API endpoints.
+2. **`v1-mock-service`** (Port `8081`): The control group. Always returns a correct `200 OK` response instantly.
+3. **`v2-mock-service`** (Port `8082`): The chaos group. Randomly simulates 40% correct responses, 30% `500 Internal Server Errors`, and 30% extreme latency delays (2–6s).
+4. **`postgres`** (Port `5432`): Uses Flyway migrations to store `requests`, `responses`, and `comparisons`.
+5. **`redis`** (Port `6379`): Provides fast `INCR` aggregation for the dashboard metrics.
 
 ---
 
-## API Endpoints
+## 🚀 Quick Start (Run Locally)
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/proxy` | Forward request to v1, mirror to v2 |
-| `GET` | `/requests?page=0&size=20` | List all logged requests (paginated) |
-| `GET` | `/requests/{id}` | Get request detail: request + v1/v2 responses + comparison |
-| `POST` | `/replay/{id}` | Replay a stored request through the full flow |
-| `GET` | `/metrics` | Platform stats: totals, mismatch rate, avg latency diff |
-| `GET` | `/actuator/health` | Spring Boot health check |
-| `GET` | `/swagger-ui.html` | Interactive API documentation |
+The backend is fully containerized. No Java or Maven installation is required to start the platform.
 
----
-
-## Quick Start
-
-### Prerequisites
-- Docker + Docker Compose installed
-
-### Run Everything
-
+### 1. Boot the Mesh
 ```bash
-git clone <repo>
-cd ShadowTool
-
-# Build and start all 5 services
-docker-compose up --build
-
-# Or in background
+# Pull images, build JARs, and start Postgres + Redis + 3 Spring Boot Apps
 docker-compose up --build -d
 ```
 
-Services started:
-- **shadow-platform** → http://localhost:8080
-- **v1-mock-service** → http://localhost:8081
-- **v2-mock-service** → http://localhost:8082
-- **PostgreSQL** → localhost:5432
-- **Redis** → localhost:6379
-
-### Test It
-
+### 2. Verify Health
+Wait 15 seconds for Spring Boot instances to bind, then check:
 ```bash
-# 1. Proxy a request
+curl http://localhost:8080/actuator/health
+```
+
+### 3. Blast some Traffic 💥
+Fire a request into the Gateway. It will hit **v1** synchronously, mirror to **v2** asynchronously, and log the comparison.
+```bash
 curl -X POST http://localhost:8080/proxy \
   -H "Content-Type: application/json" \
   -d '{
-    "endpoint": "/api/data",
+    "endpoint": "/api/payments",
     "method": "POST",
-    "payload": {"userId": 42, "action": "test"},
+    "payload": {"userId": 42, "amount": 100},
     "headers": {}
   }'
-
-# 2. View all logged requests
-curl http://localhost:8080/requests | jq
-
-# 3. View detail (replace <uuid> from step 2)
-curl http://localhost:8080/requests/<uuid> | jq
-
-# 4. Replay a request
-curl -X POST http://localhost:8080/replay/<uuid> | jq
-
-# 5. Platform metrics
-curl http://localhost:8080/metrics | jq
-
-# 6. Swagger UI
-open http://localhost:8080/swagger-ui.html
-```
-
-### Verify in DB
-
-```bash
-docker exec -it shadow-postgres psql -U shadow -d shadowdb -c \
-  "SELECT match_status, count(*) FROM comparisons GROUP BY match_status;"
 ```
 
 ---
 
-## Configuration
+## 📊 Analytics API Endpoints
 
-All settings are environment-variable driven:
+Once you've fired a few requests, explore the analytics engine:
 
-| Variable | Default | Description |
+| Method | Endpoint | Description |
 |---|---|---|
-| `SHADOW_ENABLED` | `true` | Toggle shadow mirroring on/off |
-| `SHADOW_SAMPLING_RATE` | `1.0` | Fraction of requests to mirror (0.0–1.0) |
-| `V1_BASE_URL` | `http://v1-mock-service:8081` | Primary service URL |
-| `V2_BASE_URL` | `http://v2-mock-service:8082` | Shadow service URL |
-| `V2_TIMEOUT_MS` | `5000` | v2 request timeout (ms) |
-| `DB_URL` | `jdbc:postgresql://postgres:5432/shadowdb` | Database URL |
-| `REDIS_HOST` | `redis` | Redis hostname |
+| `GET` | `/metrics` | View overall system stats (Total Requests, Mismatch %, Avg Latency Diff). |
+| `GET` | `/requests` | Paginated audit log of all historical API calls. |
+| `GET` | `/requests/{id}` | Deep dive into a specific request, showing full HTTP bodies and the exact `diff_details` if a mismatch occurred. |
+| `POST` | `/replay/{id}` | Re-execute a historical request through the entire pipeline. |
+
+*(Interactive Swagger UI available at `http://localhost:8080/swagger-ui.html`)*
 
 ---
 
-## Mock Services
+## 💻 Code Structure highlights
 
-| Service | Port | Behavior |
-|---|---|---|
-| **v1-mock-service** | 8081 | Always returns `200 OK` with correct data |
-| **v2-mock-service** | 8082 | 40% correct · 30% error (500/503) · 30% delayed (2–6s) |
-
----
-
-## Database Schema
-
-```sql
-requests     (id UUID, endpoint, method, payload JSONB, headers JSONB, created_at)
-responses    (id UUID, request_id FK, source [v1/v2], status_code, response_body JSONB, latency_ms, error_message)
-comparisons  (id UUID, request_id FK, match_status [MATCH/MISMATCH/ERROR/TIMEOUT], latency_diff, v1_status_code, v2_status_code, diff_details JSONB)
-```
+- **`config/AsyncConfig.java`**: Customizes the `ThreadPoolTaskExecutor` to prevent thread starvation during massive shadow spikes.
+- **`config/WebClientConfig.java`**: Configures reactive, non-blocking HTTP pooling to the downstream microservices.
+- **`service/ComparisonEngine.java`**: Leverages Jackson's `ObjectMapper.readTree()` to execute dynamic, structure-aware JSON comparisons.
 
 ---
 
-## Design Decisions & Trade-offs
+## 🌐 Showcase UI 
 
-### `@Async` vs Kafka
-- Chose `@Async` + `ThreadPoolTaskExecutor` for simplicity and zero extra infrastructure.
-- For true production at massive scale, Kafka would provide durability, backpressure, and replay semantics.
-
-### Fail-Safe Shadow
-- v2 errors are fully isolated — caught in `ShadowService`, never propagated to the client.
-- v1 response is always returned regardless of v2 outcome.
-
-### JSON Diff
-- Uses Jackson `JsonNode` for recursive field-level diff. Only differing fields are stored in `diff_details`.
-- Dynamic fields (timestamps, request IDs) can be ignored by extending `ComparisonEngine`.
-
-### Sampling
-- `ShadowConfig.shouldMirror()` uses `Math.random() < samplingRate` — stateless per-request sampling.
-- For consistent sampling (e.g., by user ID), replace with a hash-based approach.
-
-### Idempotency
-- All shadow requests include `X-Shadow-Request: true` header, allowing downstream services to opt out of side effects.
-
-### Redis
-- Used for fast atomic metric counters (`INCR`). Falls back gracefully if Redis is unavailable.
-
----
-
-## Production Enhancements
-
-- Add **Kafka** for durable async shadow queue
-- Add **rate limiting** (Redis token bucket) on `/proxy`
-- Add **authentication** (JWT) on management endpoints  
-- Add **Prometheus + Grafana** dashboards via `/actuator/prometheus`
-- Add **field exclusion list** for ignoring dynamic JSON fields in comparison
+This backend powers the **TwinTraffic Interactive Showcase**, a premium React/Vite dashboard. [Click here to view the Frontend Repository](https://github.com/RisheekShukla/TwinTraffic).
