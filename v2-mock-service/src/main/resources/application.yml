@@ -1,0 +1,13 @@
+server:
+  port: 8082
+spring:
+  application:
+    name: v2-mock-service
+v2:
+  chaos:
+    enabled: true
+    delay-min-ms: 2000
+    delay-max-ms: 6000
+logging:
+  level:
+    com.shadowtool.v2: DEBUG

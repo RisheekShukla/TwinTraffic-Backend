@@ -1,0 +1,8 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: v1-mock-service
+logging:
+  level:
+    com.shadowtool.v1: DEBUG
