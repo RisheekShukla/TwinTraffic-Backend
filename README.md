@@ -15,6 +15,8 @@
   </p>
 </div>
 
+<img width="1536" height="1024" alt="ChatGPT Image May 25, 2026, 04_46_42 AM" src="https://github.com/user-attachments/assets/4dafbce6-06b1-4da3-98ea-15303994b946" />
+
 ---
 
 ## ⚡ Everything You Need to Know
